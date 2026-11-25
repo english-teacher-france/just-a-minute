@@ -81,17 +81,22 @@
 
   // --- Ajustement automatique de la taille du texte ---
   // Cherche la plus grande police pour laquelle le texte tient entièrement
-  // dans le conteneur (en largeur ET en hauteur).
+  // dans le conteneur (en largeur ET en hauteur), puis applique une marge
+  // de sécurité pour que les mots ne touchent jamais le bord.
+  const FIT_MARGIN_X = 32;   // px de marge horizontale réservée
+  const FIT_SCALE = 0.85;    // réduction finale de la police
+  const FIT_MAX_PX = 280;    // taille maximale
+
   function fitText(container) {
     const span = container.firstElementChild;
     if (!span) return;
 
-    const maxW = container.clientWidth - 16;
+    const maxW = container.clientWidth - FIT_MARGIN_X;
     const maxH = container.clientHeight;
     if (maxW <= 0 || maxH <= 0) return; // conteneur masqué
 
     let min = 12;
-    let max = Math.min(maxH, 400);
+    let max = Math.min(maxH, FIT_MAX_PX);
     while (min < max) {
       const mid = Math.ceil((min + max) / 2);
       container.style.fontSize = mid + 'px';
@@ -101,7 +106,7 @@
         max = mid - 1;
       }
     }
-    container.style.fontSize = min + 'px';
+    container.style.fontSize = Math.max(12, Math.floor(min * FIT_SCALE)) + 'px';
   }
 
   function setTopicText(container, text) {
