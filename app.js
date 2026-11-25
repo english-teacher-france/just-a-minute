@@ -83,33 +83,50 @@
   }
 
   // --- Ajustement automatique de la taille du texte ---
-  // Cherche la plus grande police pour laquelle le texte tient entièrement
-  // dans le conteneur (en largeur ET en hauteur), puis applique une marge
-  // de sécurité pour que les mots ne touchent jamais le bord.
-  const FIT_MARGIN_X = 32;   // px de marge horizontale réservée
-  const FIT_SCALE = 0.85;    // réduction finale de la police
+  // Le texte revient à la ligne UNIQUEMENT entre les mots (jamais au milieu
+  // d'un mot). On cherche la plus grande police pour laquelle :
+  //   1. le mot le plus long tient sur une ligne (largeur utile),
+  //   2. le bloc complet tient dans la hauteur disponible.
+  const FIT_SAFETY_X = 4;    // px de sécurité horizontale (arrondis de rendu)
+  const FIT_SCALE = 0.95;    // légère réduction finale
   const FIT_MAX_PX = 280;    // taille maximale
+  const FIT_MIN_PX = 12;     // taille minimale
 
   function fitText(container) {
     const span = container.firstElementChild;
     if (!span) return;
 
-    const maxW = container.clientWidth - FIT_MARGIN_X;
+    // Largeur utile = largeur du conteneur moins son padding réel
+    const cs = getComputedStyle(container);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const maxW = container.clientWidth - padX - FIT_SAFETY_X;
     const maxH = container.clientHeight;
     if (maxW <= 0 || maxH <= 0) return; // conteneur masqué
 
-    let min = 12;
+    // Contraint le bloc à la largeur utile pour que le retour à la ligne
+    // se fasse entre les mots à chaque taille testée.
+    span.style.width = maxW + 'px';
+
+    const fits = size => {
+      container.style.fontSize = size + 'px';
+      // scrollWidth > clientWidth => un mot dépasse (trop long pour la ligne)
+      return span.scrollWidth <= span.clientWidth + 1 && span.offsetHeight <= maxH;
+    };
+
+    let min = FIT_MIN_PX;
     let max = Math.min(maxH, FIT_MAX_PX);
     while (min < max) {
       const mid = Math.ceil((min + max) / 2);
-      container.style.fontSize = mid + 'px';
-      if (span.scrollHeight <= maxH && span.scrollWidth <= maxW) {
+      if (fits(mid)) {
         min = mid;
       } else {
         max = mid - 1;
       }
     }
-    container.style.fontSize = Math.max(12, Math.floor(min * FIT_SCALE)) + 'px';
+
+    let finalSize = Math.max(FIT_MIN_PX, Math.floor(min * FIT_SCALE));
+    // Ne pas appliquer la réduction si la taille de base ne tient déjà pas
+    container.style.fontSize = finalSize + 'px';
   }
 
   function setTopicText(container, text) {
@@ -181,6 +198,9 @@
     el.decisionBar.classList.remove('running');
     void el.decisionBar.offsetWidth;
     el.decisionBar.classList.add('running');
+
+    // La barre de décision modifie la hauteur disponible : on réajuste
+    requestAnimationFrame(refit);
 
     state.hiddenTimeoutId = setTimeout(startTimer, DECISION_SECONDS * 1000);
   }

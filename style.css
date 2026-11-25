@@ -74,7 +74,10 @@ body {
   text-shadow: 0 3px 12px rgba(0,0,0,.3);
 }
 
-/* --- Sujet (taille de police calculée par app.js : fitText) --- */
+/* --- Sujet (taille de police calculée par app.js : fitText) ---
+   Les mots ne sont jamais coupés : le retour à la ligne se fait
+   uniquement entre les mots, et la police est réduite seulement si
+   le mot le plus long ne tient pas sur une ligne. */
 .topic {
   font-size: 4rem;
   font-weight: 800;
@@ -87,12 +90,15 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
   text-shadow: 0 3px 12px rgba(0,0,0,.3);
 }
 .topic > span {
   display: block;
   max-width: 100%;
+  text-wrap: balance; /* lignes de longueur équilibrée */
 }
 
 /* --- Écran de jeu --- */
