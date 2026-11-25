@@ -3,18 +3,18 @@
 
   const DECISION_SECONDS = 5;
 
-  // --- État ---
+  // --- État de l'application ---
   const state = {
     topics: [],
-    index: 0,            // position dans la liste mélangée
+    index: 0,          // position du sujet courant dans la liste mélangée
     duration: 60,
     mode: 'mobile',
     skipUsed: false,
-    phase: 'ready',      // ready | decision | running | paused | ended
-    decisionLeft: DECISION_SECONDS,
-    timeLeft: 60,
-    interval: null,
-    presIndex: -1        // -1 = "Are you ready?"
+    presIndex: -1,     // -1 = affichage "Are you ready?"
+    timerId: null,
+    remaining: 0,
+    paused: false,
+    phase: 'ready'     // ready | decision | running | end
   };
 
   // --- Raccourcis DOM ---
@@ -29,21 +29,27 @@
     },
     readyText: $('ready-text'),
     topic: $('topic'),
+    presTopic: $('pres-topic'),
     timer: $('timer-display'),
     decision: $('decision-display'),
     decisionCount: $('decision-count'),
+    btnReady: $('btn-ready'),
     btnSkip: $('btn-skip'),
     btnStartNow: $('btn-start-now'),
     btnPause: $('btn-pause'),
-    presTopic: $('pres-topic'),
+    btnNextPlayer: $('btn-next-player'),
+    btnPrev: $('btn-prev'),
+    btnNext: $('btn-next'),
+    btnSettings: $('btn-settings'),
+    btnCloseSettings: $('btn-close-settings'),
     overlay: $('settings-overlay'),
     selDuration: $('select-duration'),
     selMode: $('select-mode')
   };
 
   // --- Utilitaires ---
-  function shuffle(arr) {
-    const a = arr.slice();
+  function shuffle(array) {
+    const a = array.slice();
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
@@ -51,14 +57,18 @@
     return a;
   }
 
-  function showScreen(name) {
-    Object.values(el.screens).forEach(s => s.classList.remove('active'));
-    el.screens[name].classList.add('active');
-  }
-
-  function stopTimer() {
-    clearInterval(state.interval);
-    state.interval = null;
+  async function loadTopics() {
+    try {
+      const res = await fetch('topics.txt', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const list = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (list.length === 0) throw new Error('Fichier vide');
+      state.topics = shuffle(list);
+    } catch (err) {
+      console.error('Impossible de charger topics.txt :', err);
+      state.topics = shuffle(['My family', 'Football', 'Pizza', 'Summer holidays']);
+    }
   }
 
   function currentTopic() {
@@ -67,51 +77,77 @@
 
   function nextTopic() {
     state.index = (state.index + 1) % state.topics.length;
-    // Remélange quand on a fait le tour complet
-    if (state.index === 0) state.topics = shuffle(state.topics);
   }
 
-  // --- Chargement des sujets ---
-  async function loadTopics() {
-    try {
-      const res = await fetch('topics.txt', { cache: 'no-store' });
-      if (!res.ok) throw new Error(res.status);
-      const text = await res.text();
-      const list = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      if (!list.length) throw new Error('vide');
-      state.topics = shuffle(list);
-    } catch (e) {
-      state.topics = ['Erreur : topics.txt introuvable'];
-      console.error('Chargement topics.txt impossible', e);
+  // --- Ajustement automatique de la taille du texte ---
+  // Cherche la plus grande police pour laquelle le texte tient entièrement
+  // dans le conteneur (en largeur ET en hauteur).
+  function fitText(container) {
+    const span = container.firstElementChild;
+    if (!span) return;
+
+    const maxW = container.clientWidth - 16;
+    const maxH = container.clientHeight;
+    if (maxW <= 0 || maxH <= 0) return; // conteneur masqué
+
+    let min = 12;
+    let max = Math.min(maxH, 400);
+    while (min < max) {
+      const mid = Math.ceil((min + max) / 2);
+      container.style.fontSize = mid + 'px';
+      if (span.scrollHeight <= maxH && span.scrollWidth <= maxW) {
+        min = mid;
+      } else {
+        max = mid - 1;
+      }
     }
+    container.style.fontSize = min + 'px';
+  }
+
+  function setTopicText(container, text) {
+    container.firstElementChild.textContent = text;
+    requestAnimationFrame(() => fitText(container));
+  }
+
+  function refit() {
+    if (el.screens.game.classList.contains('active')) fitText(el.topic);
+    if (el.screens.presentation.classList.contains('active')) fitText(el.presTopic);
+  }
+
+  function showScreen(name) {
+    Object.values(el.screens).forEach(s => s.classList.remove('active'));
+    el.screens[name].classList.add('active');
+    requestAnimationFrame(refit);
+  }
+
+  function stopTimer() {
+    clearInterval(state.timerId);
+    state.timerId = null;
   }
 
   // --- Mode mobile : déroulement d'une manche ---
-  function resetRound() {
+  function resetToReady() {
     stopTimer();
-    state.skipUsed = false;
     state.phase = 'ready';
+    state.skipUsed = false;
+    state.paused = false;
     el.readyText.textContent = 'Es-tu prêt ?';
     showScreen('ready');
   }
 
   function startRound() {
     state.skipUsed = false;
-    showScreen('game');
     showTopicAndDecision();
   }
 
   function showTopicAndDecision() {
     stopTimer();
     state.phase = 'decision';
-    state.decisionLeft = DECISION_SECONDS;
-    state.timeLeft = state.duration;
+    state.remaining = DECISION_SECONDS;
 
-    el.topic.textContent = currentTopic();
     el.timer.classList.add('hidden');
-    el.timer.classList.remove('warning');
     el.decision.classList.remove('hidden');
-    el.decisionCount.textContent = state.decisionLeft;
+    el.decisionCount.textContent = state.remaining;
 
     el.btnSkip.classList.remove('hidden');
     el.btnSkip.disabled = state.skipUsed;
@@ -121,10 +157,13 @@
     el.btnStartNow.classList.remove('hidden');
     el.btnPause.classList.add('hidden');
 
-    state.interval = setInterval(() => {
-      state.decisionLeft--;
-      el.decisionCount.textContent = state.decisionLeft;
-      if (state.decisionLeft <= 0) startTimer();
+    showScreen('game');
+    setTopicText(el.topic, currentTopic());
+
+    state.timerId = setInterval(() => {
+      state.remaining--;
+      el.decisionCount.textContent = Math.max(state.remaining, 0);
+      if (state.remaining <= 0) startTimer();
     }, 1000);
   }
 
@@ -138,7 +177,8 @@
   function startTimer() {
     stopTimer();
     state.phase = 'running';
-    state.timeLeft = state.duration;
+    state.paused = false;
+    state.remaining = state.duration;
 
     el.decision.classList.add('hidden');
     el.btnSkip.classList.add('hidden');
@@ -147,115 +187,111 @@
     el.btnPause.textContent = '⏸ Pause';
     el.timer.classList.remove('hidden');
     renderTimer();
+    requestAnimationFrame(refit);
 
-    state.interval = setInterval(tick, 1000);
-  }
-
-  function tick() {
-    state.timeLeft--;
-    renderTimer();
-    if (state.timeLeft <= 0) endRound();
+    state.timerId = setInterval(() => {
+      if (state.paused) return;
+      state.remaining--;
+      renderTimer();
+      if (state.remaining <= 0) endRound();
+    }, 1000);
   }
 
   function renderTimer() {
-    el.timer.textContent = state.timeLeft;
-    el.timer.classList.toggle('warning', state.timeLeft <= 10);
+    el.timer.textContent = Math.max(state.remaining, 0);
+    el.timer.classList.toggle('danger', state.remaining <= 10);
   }
 
   function togglePause() {
-    if (state.phase === 'running') {
-      stopTimer();
-      state.phase = 'paused';
-      el.btnPause.textContent = '▶ Reprendre';
-    } else if (state.phase === 'paused') {
-      state.phase = 'running';
-      el.btnPause.textContent = '⏸ Pause';
-      state.interval = setInterval(tick, 1000);
-    }
+    if (state.phase !== 'running') return;
+    state.paused = !state.paused;
+    el.btnPause.textContent = state.paused ? '▶ Reprendre' : '⏸ Pause';
   }
 
   function endRound() {
     stopTimer();
-    state.phase = 'ended';
-    if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+    state.phase = 'end';
+    nextTopic(); // le prochain joueur aura un nouveau sujet
     showScreen('end');
-  }
-
-  function nextPlayer() {
-    nextTopic();
-    resetRound();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
   }
 
   // --- Mode présentation ---
-  function enterPresentation() {
-    stopTimer();
-    state.presIndex = -1;
-    renderPresentation();
-    showScreen('presentation');
-  }
-
   function renderPresentation() {
-    el.presTopic.textContent = state.presIndex < 0
-      ? 'Are you ready?'
-      : state.topics[state.presIndex];
+    setTopicText(
+      el.presTopic,
+      state.presIndex < 0 ? 'Are you ready?' : state.topics[state.presIndex]
+    );
   }
 
   function presNext() {
-    state.presIndex++;
-    if (state.presIndex >= state.topics.length) {
-      state.topics = shuffle(state.topics);
-      state.presIndex = 0;
-    }
+    state.presIndex = (state.presIndex + 1) % state.topics.length;
     renderPresentation();
   }
 
   function presPrev() {
-    if (state.presIndex > -1) state.presIndex--;
+    if (state.presIndex <= 0) {
+      state.presIndex = -1;
+    } else {
+      state.presIndex--;
+    }
     renderPresentation();
   }
 
   // --- Changement de mode ---
   function applyMode(mode) {
     state.mode = mode;
+    stopTimer();
     el.app.classList.toggle('mode-presentation', mode === 'presentation');
     el.app.classList.toggle('mode-mobile', mode === 'mobile');
-    if (mode === 'presentation') enterPresentation();
-    else resetRound();
+
+    if (mode === 'presentation') {
+      state.presIndex = -1;
+      showScreen('presentation');
+      renderPresentation();
+    } else {
+      resetToReady();
+    }
   }
 
   // --- Événements ---
-  $('btn-ready').addEventListener('click', startRound);
+  el.btnReady.addEventListener('click', startRound);
   el.btnSkip.addEventListener('click', skipTopic);
   el.btnStartNow.addEventListener('click', startTimer);
   el.btnPause.addEventListener('click', togglePause);
-  $('btn-next-player').addEventListener('click', nextPlayer);
-  $('btn-next').addEventListener('click', presNext);
-  $('btn-prev').addEventListener('click', presPrev);
+  el.btnNextPlayer.addEventListener('click', resetToReady);
+  el.btnNext.addEventListener('click', presNext);
+  el.btnPrev.addEventListener('click', presPrev);
 
-  $('btn-settings').addEventListener('click', () => {
-    // Met la manche en pause à l'ouverture des paramètres
-    if (state.phase === 'running') togglePause();
-    el.overlay.classList.remove('hidden');
-  });
-  $('btn-close-settings').addEventListener('click', () => {
-    el.overlay.classList.add('hidden');
+  el.btnSettings.addEventListener('click', () => el.overlay.classList.remove('hidden'));
+  el.btnCloseSettings.addEventListener('click', () => el.overlay.classList.add('hidden'));
+  el.overlay.addEventListener('click', e => {
+    if (e.target === el.overlay) el.overlay.classList.add('hidden');
   });
 
-  el.selDuration.addEventListener('change', e => {
-    state.duration = parseInt(e.target.value, 10);
+  el.selDuration.addEventListener('change', () => {
+    state.duration = parseInt(el.selDuration.value, 10);
     localStorage.setItem('jam-duration', state.duration);
   });
-  el.selMode.addEventListener('change', e => {
-    applyMode(e.target.value);
-    localStorage.setItem('jam-mode', e.target.value);
+
+  el.selMode.addEventListener('change', () => {
+    localStorage.setItem('jam-mode', el.selMode.value);
+    applyMode(el.selMode.value);
   });
 
-  // Flèches du clavier en mode présentation
+  // Raccourcis clavier en mode présentation
   document.addEventListener('keydown', e => {
     if (state.mode !== 'presentation') return;
-    if (e.key === 'ArrowRight' || e.key === ' ') presNext();
+    if (e.key === 'ArrowRight' || e.key === ' ') {
+      e.preventDefault();
+      presNext();
+    }
     if (e.key === 'ArrowLeft') presPrev();
   });
+
+  // Réajuster le texte si la fenêtre change de taille / d'orientation
+  window.addEventListener('resize', refit);
+  window.addEventListener('orientationchange', refit);
 
   // --- Démarrage ---
   async function init() {
