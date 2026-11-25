@@ -1,20 +1,23 @@
 (() => {
   'use strict';
 
-  const DECISION_SECONDS = 5;
+  const HIDDEN_SECONDS = 3;    // lecture du sujet, sans indication à l'écran
+  const DECISION_SECONDS = 5;  // compte à rebours animé
+  const DEFAULT_DURATION = 30;
 
   // --- État de l'application ---
   const state = {
     topics: [],
     index: 0,          // position du sujet courant dans la liste mélangée
-    duration: 60,
+    duration: DEFAULT_DURATION,
     mode: 'mobile',
     skipUsed: false,
     presIndex: -1,     // -1 = affichage "Are you ready?"
     timerId: null,
+    hiddenTimeoutId: null,
     remaining: 0,
     paused: false,
-    phase: 'ready'     // ready | decision | running | end
+    phase: 'ready'     // ready | reading | decision | running | end
   };
 
   // --- Raccourcis DOM ---
@@ -32,7 +35,7 @@
     presTopic: $('pres-topic'),
     timer: $('timer-display'),
     decision: $('decision-display'),
-    decisionCount: $('decision-count'),
+    decisionBar: $('decision-bar'),
     btnReady: $('btn-ready'),
     btnSkip: $('btn-skip'),
     btnStartNow: $('btn-start-now'),
@@ -80,28 +83,50 @@
   }
 
   // --- Ajustement automatique de la taille du texte ---
-  // Cherche la plus grande police pour laquelle le texte tient entièrement
-  // dans le conteneur (en largeur ET en hauteur).
+  // Le texte revient à la ligne UNIQUEMENT entre les mots (jamais au milieu
+  // d'un mot). On cherche la plus grande police pour laquelle :
+  //   1. le mot le plus long tient sur une ligne (largeur utile),
+  //   2. le bloc complet tient dans la hauteur disponible.
+  const FIT_SAFETY_X = 4;    // px de sécurité horizontale (arrondis de rendu)
+  const FIT_SCALE = 0.95;    // légère réduction finale
+  const FIT_MAX_PX = 280;    // taille maximale
+  const FIT_MIN_PX = 12;     // taille minimale
+
   function fitText(container) {
     const span = container.firstElementChild;
     if (!span) return;
 
-    const maxW = container.clientWidth - 16;
+    // Largeur utile = largeur du conteneur moins son padding réel
+    const cs = getComputedStyle(container);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const maxW = container.clientWidth - padX - FIT_SAFETY_X;
     const maxH = container.clientHeight;
     if (maxW <= 0 || maxH <= 0) return; // conteneur masqué
 
-    let min = 12;
-    let max = Math.min(maxH, 400);
+    // Contraint le bloc à la largeur utile pour que le retour à la ligne
+    // se fasse entre les mots à chaque taille testée.
+    span.style.width = maxW + 'px';
+
+    const fits = size => {
+      container.style.fontSize = size + 'px';
+      // scrollWidth > clientWidth => un mot dépasse (trop long pour la ligne)
+      return span.scrollWidth <= span.clientWidth + 1 && span.offsetHeight <= maxH;
+    };
+
+    let min = FIT_MIN_PX;
+    let max = Math.min(maxH, FIT_MAX_PX);
     while (min < max) {
       const mid = Math.ceil((min + max) / 2);
-      container.style.fontSize = mid + 'px';
-      if (span.scrollHeight <= maxH && span.scrollWidth <= maxW) {
+      if (fits(mid)) {
         min = mid;
       } else {
         max = mid - 1;
       }
     }
-    container.style.fontSize = min + 'px';
+
+    let finalSize = Math.max(FIT_MIN_PX, Math.floor(min * FIT_SCALE));
+    // Ne pas appliquer la réduction si la taille de base ne tient déjà pas
+    container.style.fontSize = finalSize + 'px';
   }
 
   function setTopicText(container, text) {
@@ -122,7 +147,9 @@
 
   function stopTimer() {
     clearInterval(state.timerId);
+    clearTimeout(state.hiddenTimeoutId);
     state.timerId = null;
+    state.hiddenTimeoutId = null;
   }
 
   // --- Mode mobile : déroulement d'une manche ---
@@ -140,14 +167,14 @@
     showTopicAndDecision();
   }
 
+  // Phase 1 : 3 s cachées (sujet seul), phase 2 : 5 s avec animation.
   function showTopicAndDecision() {
     stopTimer();
-    state.phase = 'decision';
-    state.remaining = DECISION_SECONDS;
+    state.phase = 'reading';
 
     el.timer.classList.add('hidden');
-    el.decision.classList.remove('hidden');
-    el.decisionCount.textContent = state.remaining;
+    el.decision.classList.add('hidden');
+    el.decisionBar.classList.remove('running');
 
     el.btnSkip.classList.remove('hidden');
     el.btnSkip.disabled = state.skipUsed;
@@ -160,15 +187,26 @@
     showScreen('game');
     setTopicText(el.topic, currentTopic());
 
-    state.timerId = setInterval(() => {
-      state.remaining--;
-      el.decisionCount.textContent = Math.max(state.remaining, 0);
-      if (state.remaining <= 0) startTimer();
-    }, 1000);
+    state.hiddenTimeoutId = setTimeout(startDecisionCountdown, HIDDEN_SECONDS * 1000);
+  }
+
+  function startDecisionCountdown() {
+    state.phase = 'decision';
+    el.decision.classList.remove('hidden');
+    el.decisionBar.style.animationDuration = DECISION_SECONDS + 's';
+    // Relance l'animation CSS depuis le début
+    el.decisionBar.classList.remove('running');
+    void el.decisionBar.offsetWidth;
+    el.decisionBar.classList.add('running');
+
+    // La barre de décision modifie la hauteur disponible : on réajuste
+    requestAnimationFrame(refit);
+
+    state.hiddenTimeoutId = setTimeout(startTimer, DECISION_SECONDS * 1000);
   }
 
   function skipTopic() {
-    if (state.phase !== 'decision' || state.skipUsed) return;
+    if ((state.phase !== 'reading' && state.phase !== 'decision') || state.skipUsed) return;
     state.skipUsed = true;
     nextTopic();
     showTopicAndDecision();
@@ -181,6 +219,7 @@
     state.remaining = state.duration;
 
     el.decision.classList.add('hidden');
+    el.decisionBar.classList.remove('running');
     el.btnSkip.classList.add('hidden');
     el.btnStartNow.classList.add('hidden');
     el.btnPause.classList.remove('hidden');
@@ -298,10 +337,11 @@
     await loadTopics();
 
     const savedDuration = parseInt(localStorage.getItem('jam-duration'), 10);
-    if ([30, 40, 50, 60].includes(savedDuration)) {
-      state.duration = savedDuration;
-      el.selDuration.value = savedDuration;
-    }
+    state.duration = [30, 40, 50, 60].includes(savedDuration)
+      ? savedDuration
+      : DEFAULT_DURATION;
+    el.selDuration.value = state.duration;
+
     const savedMode = localStorage.getItem('jam-mode');
     if (savedMode === 'presentation') el.selMode.value = savedMode;
 
