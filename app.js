@@ -1,20 +1,23 @@
 (() => {
   'use strict';
 
-  const DECISION_SECONDS = 5;
+  const HIDDEN_SECONDS = 3;    // lecture du sujet, sans indication à l'écran
+  const DECISION_SECONDS = 5;  // compte à rebours animé
+  const DEFAULT_DURATION = 30;
 
   // --- État de l'application ---
   const state = {
     topics: [],
     index: 0,          // position du sujet courant dans la liste mélangée
-    duration: 60,
+    duration: DEFAULT_DURATION,
     mode: 'mobile',
     skipUsed: false,
     presIndex: -1,     // -1 = affichage "Are you ready?"
     timerId: null,
+    hiddenTimeoutId: null,
     remaining: 0,
     paused: false,
-    phase: 'ready'     // ready | decision | running | end
+    phase: 'ready'     // ready | reading | decision | running | end
   };
 
   // --- Raccourcis DOM ---
@@ -32,7 +35,7 @@
     presTopic: $('pres-topic'),
     timer: $('timer-display'),
     decision: $('decision-display'),
-    decisionCount: $('decision-count'),
+    decisionBar: $('decision-bar'),
     btnReady: $('btn-ready'),
     btnSkip: $('btn-skip'),
     btnStartNow: $('btn-start-now'),
@@ -127,7 +130,9 @@
 
   function stopTimer() {
     clearInterval(state.timerId);
+    clearTimeout(state.hiddenTimeoutId);
     state.timerId = null;
+    state.hiddenTimeoutId = null;
   }
 
   // --- Mode mobile : déroulement d'une manche ---
@@ -145,14 +150,14 @@
     showTopicAndDecision();
   }
 
+  // Phase 1 : 3 s cachées (sujet seul), phase 2 : 5 s avec animation.
   function showTopicAndDecision() {
     stopTimer();
-    state.phase = 'decision';
-    state.remaining = DECISION_SECONDS;
+    state.phase = 'reading';
 
     el.timer.classList.add('hidden');
-    el.decision.classList.remove('hidden');
-    el.decisionCount.textContent = state.remaining;
+    el.decision.classList.add('hidden');
+    el.decisionBar.classList.remove('running');
 
     el.btnSkip.classList.remove('hidden');
     el.btnSkip.disabled = state.skipUsed;
@@ -165,15 +170,23 @@
     showScreen('game');
     setTopicText(el.topic, currentTopic());
 
-    state.timerId = setInterval(() => {
-      state.remaining--;
-      el.decisionCount.textContent = Math.max(state.remaining, 0);
-      if (state.remaining <= 0) startTimer();
-    }, 1000);
+    state.hiddenTimeoutId = setTimeout(startDecisionCountdown, HIDDEN_SECONDS * 1000);
+  }
+
+  function startDecisionCountdown() {
+    state.phase = 'decision';
+    el.decision.classList.remove('hidden');
+    el.decisionBar.style.animationDuration = DECISION_SECONDS + 's';
+    // Relance l'animation CSS depuis le début
+    el.decisionBar.classList.remove('running');
+    void el.decisionBar.offsetWidth;
+    el.decisionBar.classList.add('running');
+
+    state.hiddenTimeoutId = setTimeout(startTimer, DECISION_SECONDS * 1000);
   }
 
   function skipTopic() {
-    if (state.phase !== 'decision' || state.skipUsed) return;
+    if ((state.phase !== 'reading' && state.phase !== 'decision') || state.skipUsed) return;
     state.skipUsed = true;
     nextTopic();
     showTopicAndDecision();
@@ -186,6 +199,7 @@
     state.remaining = state.duration;
 
     el.decision.classList.add('hidden');
+    el.decisionBar.classList.remove('running');
     el.btnSkip.classList.add('hidden');
     el.btnStartNow.classList.add('hidden');
     el.btnPause.classList.remove('hidden');
@@ -303,10 +317,11 @@
     await loadTopics();
 
     const savedDuration = parseInt(localStorage.getItem('jam-duration'), 10);
-    if ([30, 40, 50, 60].includes(savedDuration)) {
-      state.duration = savedDuration;
-      el.selDuration.value = savedDuration;
-    }
+    state.duration = [30, 40, 50, 60].includes(savedDuration)
+      ? savedDuration
+      : DEFAULT_DURATION;
+    el.selDuration.value = state.duration;
+
     const savedMode = localStorage.getItem('jam-mode');
     if (savedMode === 'presentation') el.selMode.value = savedMode;
 

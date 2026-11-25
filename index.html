@@ -24,9 +24,9 @@
 
     <!-- ÉCRAN : jeu (mobile) -->
     <main id="screen-game" class="screen">
-      <div id="timer-display" class="timer hidden">60</div>
-      <div id="decision-display" class="decision hidden">
-        Tu as <span id="decision-count">5</span> s pour te décider…
+      <div id="timer-display" class="timer hidden">30</div>
+      <div id="decision-display" class="decision hidden" aria-label="Compte à rebours avant le début">
+        <div class="decision-track"><div id="decision-bar" class="decision-bar"></div></div>
       </div>
 
       <div id="topic" class="topic"><span>…</span></div>
@@ -58,10 +58,10 @@
 
         <label for="select-duration">Durée de la manche</label>
         <select id="select-duration">
-          <option value="30">30 secondes</option>
+          <option value="30" selected>30 secondes</option>
           <option value="40">40 secondes</option>
           <option value="50">50 secondes</option>
-          <option value="60" selected>60 secondes</option>
+          <option value="60">60 secondes</option>
         </select>
 
         <label for="select-mode">Mode d'affichage</label>
