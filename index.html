@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e3a8a">
+  <title>Just a minute</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="mode-mobile">
+
+    <!-- Barre du haut -->
+    <header class="topbar">
+      <h1 class="logo">Just a minute</h1>
+      <button id="btn-settings" class="icon-btn" aria-label="Paramètres">⚙️</button>
+    </header>
+
+    <!-- ÉCRAN : prêt ? -->
+    <main id="screen-ready" class="screen active">
+      <p id="ready-text" class="big-message">Es-tu prêt ?</p>
+      <button id="btn-ready" class="btn primary huge">Oui, je suis prêt !</button>
+    </main>
+
+    <!-- ÉCRAN : jeu (mobile) -->
+    <main id="screen-game" class="screen">
+      <div id="timer-display" class="timer hidden">60</div>
+      <div id="decision-display" class="decision hidden">
+        Tu as <span id="decision-count">5</span> s pour te décider…
+      </div>
+
+      <div id="topic" class="topic">…</div>
+
+      <div id="game-actions" class="actions">
+        <button id="btn-skip" class="btn secondary">Passer le sujet (1 fois)</button>
+        <button id="btn-start-now" class="btn primary">Commencer maintenant</button>
+        <button id="btn-pause" class="btn primary hidden">⏸ Pause</button>
+      </div>
+    </main>
+
+    <!-- ÉCRAN : fin de manche -->
+    <main id="screen-end" class="screen">
+      <p class="big-message">Joueur suivant</p>
+      <button id="btn-next-player" class="btn primary huge">Joueur suivant ▶</button>
+    </main>
+
+    <!-- ÉCRAN : mode présentation -->
+    <main id="screen-presentation" class="screen">
+      <button id="btn-prev" class="nav-btn" aria-label="Sujet précédent">‹</button>
+      <div id="pres-topic" class="topic pres">Are you ready?</div>
+      <button id="btn-next" class="nav-btn" aria-label="Sujet suivant">›</button>
+    </main>
+
+    <!-- PARAMÈTRES -->
+    <div id="settings-overlay" class="overlay hidden">
+      <div class="modal">
+        <h2>Paramètres</h2>
+
+        <label for="select-duration">Durée de la manche</label>
+        <select id="select-duration">
+          <option value="30">30 secondes</option>
+          <option value="40">40 secondes</option>
+          <option value="50">50 secondes</option>
+          <option value="60" selected>60 secondes</option>
+        </select>
+
+        <label for="select-mode">Mode d'affichage</label>
+        <select id="select-mode">
+          <option value="mobile">Mobile (élèves)</option>
+          <option value="presentation">Présentation (tableau blanc)</option>
+        </select>
+
+        <button id="btn-close-settings" class="btn primary">Fermer</button>
+      </div>
+    </div>
+
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
