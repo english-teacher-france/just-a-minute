@@ -29,7 +29,7 @@
         Tu as <span id="decision-count">5</span> s pour te décider…
       </div>
 
-      <div id="topic" class="topic">…</div>
+      <div id="topic" class="topic"><span>…</span></div>
 
       <div id="game-actions" class="actions">
         <button id="btn-skip" class="btn secondary">Passer le sujet (1 fois)</button>
@@ -47,7 +47,7 @@
     <!-- ÉCRAN : mode présentation -->
     <main id="screen-presentation" class="screen">
       <button id="btn-prev" class="nav-btn" aria-label="Sujet précédent">‹</button>
-      <div id="pres-topic" class="topic pres">Are you ready?</div>
+      <div id="pres-topic" class="topic pres"><span>Are you ready?</span></div>
       <button id="btn-next" class="nav-btn" aria-label="Sujet suivant">›</button>
     </main>
 
@@ -66,7 +66,7 @@
 
         <label for="select-mode">Mode d'affichage</label>
         <select id="select-mode">
-          <option value="mobile">Mobile (élèves)</option>
+          <option value="mobile" selected>Mobile (jeu en groupe)</option>
           <option value="presentation">Présentation (tableau blanc)</option>
         </select>
 
@@ -75,6 +75,7 @@
     </div>
 
   </div>
+
   <script src="app.js"></script>
 </body>
 </html>
